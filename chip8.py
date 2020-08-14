@@ -9,182 +9,6 @@ from binaryninja.enums import Endianness, InstructionTextTokenType
 from struct import unpack
 
 
-class Disassembler(object):
-    def __init__(self):
-        self.opcodes = {
-            0x0: "_rcs",
-            0x1: "_jp",
-            0x2: "_call",
-            0x3: "_se_kk",
-            0x4: "_sne_kk",
-            0x5: "_se",
-            0x6: "_ld_kk",
-            0x7: "_add",
-            0x8: "_bitops",
-            0x9: "_sne",
-            0xa: "_ld_i",
-            0xb: "_jp_v0",
-            0xc: "_rnd",
-            0xd: "_draw",
-            0xe: "_skip",
-            0xf: "_ld",
-        }
-        self.V = {
-            0x0: 'V0',
-            0x1: 'V1',
-            0x2: 'V2',
-            0x3: 'V3',
-            0x4: 'V4',
-            0x5: 'V5',
-            0x6: 'V6',
-            0x7: 'V7',
-            0x8: 'V8',
-            0x9: 'V9',
-            0xa: 'Va',
-            0xb: 'Vb',
-            0xc: 'Vc',
-            0xd: 'Vd',
-            0xe: 'Ve',
-            0xf: 'Vf',
-        }
-
-    
-
-    def disasm(self, opcode, addr):
-        opd = self._u16(opcode)
-        n = opd >> 12
-        handler = getattr(self, self.opcodes[n])
-        return handler(opd)
-
-    def _vars(self, opd):
-        if isinstance(opd, bytes):
-            opd = self._u16(opd)
-        addr = opd & 0xfff
-        n = opd & 0xf
-        x = (opd >> 8) & 0xf
-        y = (opd >> 4) & 0xf
-        kk = opd & 0xff
-        return {
-            'addr': addr,
-            'n': n,
-            'x': x,
-            'y': y,
-            'kk': kk
-        }
-
-    def _u16(self, opcode):
-        if len(opcode) == 1:
-            return unpack('>B', opcode)[0]
-        return unpack('>H', opcode)[0]
-
-    def _rcs(self, opcode):
-        if opcode == 0x00EE:
-            return "RET"
-        if opcode == 0x00E0:
-            return "CLS"
-        addr = opcode & 0xfff
-        return "SYS {:#x}".format(addr)
-
-    def _jp(self, opcode):
-        addr = opcode & 0xfff
-        return "JP {:#x}".format(addr)
-
-    def _call(self, opcode):
-        addr = opcode & 0xfff
-        return "CALL {:#x}".format(addr)
-
-    def _se_kk(self, opcode):
-        vars = self._vars(opcode)
-        x, kk = vars['x'], vars['kk']
-        return "SE {}, {:#x}".format(self.V[x], kk)
-
-    def _sne_kk(self, opcode):
-        vars = self._vars(opcode)
-        x, kk = vars['x'], vars['kk']
-        return "SNE {}, {:#x}".format(self.V[x], kk)
-
-    def _se(self, opcode):
-        vars = self._vars(opcode)
-        x, y = vars['x'], vars['y']
-        return "SE {}, {}".format(self.V[x], self.V[y])
-
-    def _ld_kk(self, opcode):
-        vars = self._vars(opcode)
-        x, kk = vars['x'], vars['kk']
-        return "LD {}, {:#x}".format(self.V[x], kk)
-
-    def _add(self, opcode):
-        vars = self._vars(opcode)
-        x, kk = vars['x'], vars['kk']
-        return "ADD {}, {:#x}".format(self.V[x], kk)
-
-    def _bitops(self, opcode):
-        vars = self._vars(opcode)
-        x, y, n = vars['x'], vars['y'], vars['n']
-        mnem = {
-            0x0: "LD {}, {}",
-            0x1: "OR {}, {}",
-            0x2: "AND {}, {}",
-            0x3: "XOR {}, {}",
-            0x4: "ADD {}, {}",
-            0x5: "SUB {}, {}",
-            0x6: "SHR {}, 1",
-            0x7: "SUBN {}, {}",
-            0xE: "SHL {}, 1"
-        }
-        return mnem.get(n, '').format(self.V[x], self.V[y])
-
-    def _sne(self, opcode):
-        vars = self._vars(opcode)
-        x, y = vars['x'], vars['y']
-        return "SNE {}, {}".format(self.V[x], self.V[y])
-
-    def _ld_i(self, opcode):
-        addr = opcode & 0xfff
-        return "LD I, {:#x}".format(addr)
-    
-    def _jp_v0(self, opcode):
-        addr = opcode & 0xfff
-        return "JP V0, {:#x}".format(addr)
-
-    def _rnd(self, opcode):
-        vars = self._vars(opcode)
-        x, kk = vars['x'], vars['kk']
-        return "RND {}, {:#x}".format(self.V[x], kk)
-
-    def _draw(self, opcode):
-        vars = self._vars(opcode)
-        x, y, n = vars['x'], vars['y'], vars['n']
-        return "DRW {}, {}, {:#x}".format(self.V[x], self.V[y], n)
-    
-    def _skip(self, opcode):
-        vars = self._vars(opcode)
-        x, kk = vars['x'], vars['kk']
-        if kk == 0x9E:
-            return "SKP {}".format(self.V[x])
-        if kk == 0xA1:
-            return "SKNP {}".format(self.V[x])
-        return ''
-
-    def _ld(self, opcode):
-        subs = {
-            0x07: "LD {}, DT",
-            0x0A: "LD {}, K",
-            0x15: "LD DT, {}",
-            0x18: "LD ST, {}",
-            0x1e: "ADD I, {}",
-            0x29: "LD F, {}",
-            0x33: "LD B, {}",
-            0x55: "LD [I], {}",
-            0x65: "LD {}, [I]"
-        }
-        vars = self._vars(opcode)
-        x, kk = vars['x'], vars['kk']
-        return subs.get(kk, '').format(self.V[x])
-
-
-
-
 
 class CHIP8(Architecture):
     name = 'CHIP-8'
@@ -231,19 +55,330 @@ class CHIP8(Architecture):
         return result
     
     def get_instruction_text(self, data, addr):
-        instruction = self.dis.disasm(data, addr)
-        if not instruction:
-            instruction = "_emit {:#x} {:#x}".format(data[0], data[1])
-            tokens = [InstructionTextToken(InstructionTextTokenType.InstructionToken, "_emit"),
-            InstructionTextToken(InstructionTextTokenType.HexDumpByteValueToken, hex(data[0])),
-            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, " "),
-            InstructionTextToken(InstructionTextTokenType.HexDumpByteValueToken, hex(data[1]))]
-            return tokens, 2
-        tokens = [InstructionTextToken(InstructionTextTokenType.TextToken, instruction)]
+        tokens = self.dis.disasm(data, addr)
+        if not tokens:
+            tokens = [InstructionTextToken(InstructionTextTokenType.InstructionToken, '_emit'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(data[0])),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(data[1]))]
         return tokens, 2
 
     def get_instruction_low_level_il(self, data, addr, il):
         return None
+
+
+
+
+
+class Disassembler(object):
+    def __init__(self):
+        self.opcodes = {
+            0x0: "_rcs",
+            0x1: "_jp",
+            0x2: "_call",
+            0x3: "_se_kk",
+            0x4: "_sne_kk",
+            0x5: "_se",
+            0x6: "_ld_kk",
+            0x7: "_add",
+            0x8: "_bitops",
+            0x9: "_sne",
+            0xa: "_ld_i",
+            0xb: "_jp_v0",
+            0xc: "_rnd",
+            0xd: "_draw",
+            0xe: "_skip",
+            0xf: "_ld",
+        }
+        self.V = {
+            0x0: 'V0',
+            0x1: 'V1',
+            0x2: 'V2',
+            0x3: 'V3',
+            0x4: 'V4',
+            0x5: 'V5',
+            0x6: 'V6',
+            0x7: 'V7',
+            0x8: 'V8',
+            0x9: 'V9',
+            0xa: 'Va',
+            0xb: 'Vb',
+            0xc: 'Vc',
+            0xd: 'Vd',
+            0xe: 'Ve',
+            0xf: 'Vf',
+        }
+
+
+    def disasm(self, opcode, addr):
+        opd = self._u16(opcode)
+        n = opd >> 12
+        handler = getattr(self, self.opcodes[n])
+        return handler(opd)
+
+    def _vars(self, opd):
+        if isinstance(opd, bytes):
+            opd = self._u16(opd)
+        addr = opd & 0xfff
+        n = opd & 0xf
+        x = (opd >> 8) & 0xf
+        y = (opd >> 4) & 0xf
+        kk = opd & 0xff
+        return {
+            'addr': addr,
+            'n': n,
+            'x': x,
+            'y': y,
+            'kk': kk
+        }
+
+    def _u16(self, opcode):
+        if len(opcode) == 1:
+            return unpack('>B', opcode)[0]
+        return unpack('>H', opcode)[0]
+
+    def _rcs(self, opcode):
+        if opcode == 0x00EE:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'RET')]
+        if opcode == 0x00E0:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'CLS')]
+        addr = opcode & 0xfff
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SYS'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+
+    def _jp(self, opcode):
+        addr = opcode & 0xfff
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'JP'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+
+    def _call(self, opcode):
+        addr = opcode & 0xfff
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'CALL'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+
+    def _se_kk(self, opcode):
+        vars = self._vars(opcode)
+        x, kk = vars['x'], vars['kk']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SE'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+
+    def _sne_kk(self, opcode):
+        vars = self._vars(opcode)
+        x, kk = vars['x'], vars['kk']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SNE'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+
+    def _se(self, opcode):
+        vars = self._vars(opcode)
+        x, y = vars['x'], vars['y']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SE'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+
+    def _ld_kk(self, opcode):
+        vars = self._vars(opcode)
+        x, kk = vars['x'], vars['kk']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+
+    def _add(self, opcode):
+        vars = self._vars(opcode)
+        x, kk = vars['x'], vars['kk']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'ADD'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+
+    def _bitops(self, opcode):
+        vars = self._vars(opcode)
+        x, y, n = vars['x'], vars['y'], vars['n']
+        if n == 0x0:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+        elif n == 0x1:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'OR'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+        elif n == 0x2:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'AND'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+        elif n == 0x3:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'XOR'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+        elif n == 0x4:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'ADD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+        elif n == 0x5:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SUB'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+        elif n == 0x6:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SHR'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(1))]
+        elif n == 0x7:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SUBN'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+        elif n == 0xE:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SHL'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(1))]
+
+    def _sne(self, opcode):
+        vars = self._vars(opcode)
+        x, y = vars['x'], vars['y']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SNE'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y])]
+
+    def _ld_i(self, opcode):
+        addr = opcode & 0xfff
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, 'I'),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+    
+    def _jp_v0(self, opcode):
+        addr = opcode & 0xfff
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'JP'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, 'V0'),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+
+    def _rnd(self, opcode):
+        vars = self._vars(opcode)
+        x, kk = vars['x'], vars['kk']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'RND'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+
+    def _draw(self, opcode):
+        vars = self._vars(opcode)
+        x, y, n = vars['x'], vars['y'], vars['n']
+        return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'DRW'),
+        InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y]),
+        InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(n))]
+    
+    def _skip(self, opcode):
+        vars = self._vars(opcode)
+        x, kk = vars['x'], vars['kk']
+        if kk == 0x9E:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SKP'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+        if kk == 0xA1:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SKNP'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+
+    def _ld(self, opcode):
+        vars = self._vars(opcode)
+        x, kk = vars['x'], vars['kk']
+        if kk == 0x07:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'DT')]
+        elif kk == 0x0A:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'K')]
+        elif kk == 0x15:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'DT'),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+        elif kk == 0x18:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'ST'),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+        elif kk == 0x1e:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'ADD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'I'),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+        elif kk == 0x29:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'F'),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+        elif kk == 0x33:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'B'),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+        elif kk == 0x55:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' ['),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'I'),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, '], '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x])]
+        elif kk == 0x65:
+            return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'LD'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', ['),
+            InstructionTextToken(InstructionTextTokenType.RegisterToken, 'I'),
+            InstructionTextToken(InstructionTextTokenType.TextToken, ']')]
+
 
 
 
