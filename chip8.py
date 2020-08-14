@@ -73,6 +73,8 @@ class Disassembler(object):
         }
 
     def _u16(self, opcode):
+        if len(opcode) == 1:
+            return unpack('>B', opcode)[0]
         return unpack('>H', opcode)[0]
 
     def _rcs(self, opcode):
@@ -232,6 +234,11 @@ class CHIP8(Architecture):
         instruction = self.dis.disasm(data, addr)
         if not instruction:
             instruction = "_emit {:#x} {:#x}".format(data[0], data[1])
+            tokens = [InstructionTextToken(InstructionTextTokenType.InstructionToken, "_emit"),
+            InstructionTextToken(InstructionTextTokenType.HexDumpByteValueToken, hex(data[0])),
+            InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, " "),
+            InstructionTextToken(InstructionTextTokenType.HexDumpByteValueToken, hex(data[1]))]
+            return tokens, 2
         tokens = [InstructionTextToken(InstructionTextTokenType.TextToken, instruction)]
         return tokens, 2
 
