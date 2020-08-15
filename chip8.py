@@ -1,13 +1,53 @@
-"""
-TODO: Need docstrings
-"""
-
 from binaryninja.log import log_info
 from binaryninja.architecture import Architecture
 from binaryninja.function import RegisterInfo, InstructionInfo, InstructionTextToken
-from binaryninja.enums import Endianness, InstructionTextTokenType, BranchType
+from binaryninja.enums import Endianness, InstructionTextTokenType, BranchType, SegmentFlag, SectionSemantics
+from binaryninja.binaryview import BinaryView
 from struct import unpack
 from enum import Enum
+
+
+class Chip8View(BinaryView):
+    """ BinaryView is basically the loader of the image """
+    name = 'ROM-Only Data'
+    long_name = 'CHIP-8 Interpreter ROM'
+
+    def __init__(self, data):
+        """
+        Create memory map segments for the image
+        We use only the ROM data, no additional data is mapped.
+        Interpreter segment is not loaded to not confuse the user when looking at the image in the hex viewer
+        """
+        BinaryView.__init__(self, parent_view=data, file_metadata=data.file)
+        self.platform = Architecture['CHIP-8'].standalone_platform
+        self.data = data
+        self.add_auto_segment(0x200, len(data), 0, len(data), SegmentFlag.SegmentReadable | SegmentFlag.SegmentWritable | SegmentFlag.SegmentExecutable | SegmentFlag.SegmentContainsCode)
+        self.add_user_section('ROM Data', 0x200, len(data), SectionSemantics.ReadOnlyCodeSectionSemantics)
+        self.add_entry_point(0x200)
+        self.get_function_at(0x200).name = 'entry'
+
+
+
+    @classmethod
+    def is_valid_for_data(cls, data):
+        """
+        Function called by the loader to auto-determine the BinaryView for the opened file.
+        Because this is an interpreted language bytecode (VM) we have no magic value to determine ROM type.
+        Hack to check file size and require the first 20 instructions to be properly disassembled.
+        """
+        if len(data) <= 0xe00:
+            dis = Disassembler()
+            for i in range(0, 40, 2):
+                if not dis.disasm(data[i:i+2], 0):
+                    return False
+            return True
+        return False
+
+    def perform_is_executable(self):
+        return True
+
+    def perform_get_entry_point(self):
+        return 0x200
 
 
 
@@ -51,6 +91,7 @@ class CHIP8(Architecture):
         self.dis = Disassembler()
 
     def get_instruction_info(self, data, addr):
+        """ Establishes instruction length and branch info """
         if len(data) > 2:
             data = data[:2]
         result = InstructionInfo()
@@ -71,6 +112,7 @@ class CHIP8(Architecture):
         return result
     
     def get_instruction_text(self, data, addr):
+        """ Display text for tokanized instruction """
         if len(data) > 2:
             data = data[:2]
         tokens = self.dis.disasm(data, addr)
@@ -83,11 +125,13 @@ class CHIP8(Architecture):
         return tokens, 2
 
     def get_instruction_low_level_il(self, data, addr, il):
+        """ TODO: Implement a lifter here """
         return None
 
 
 
 class Disassembler(object):
+    """ CHIP-8 tokanized Disassembler """
     def __init__(self):
         self.opcodes = {
             0x0: "_rcs",
@@ -128,6 +172,9 @@ class Disassembler(object):
 
 
     def disasm(self, opcode, addr):
+        """ Return disassembled tokanized instruction """
+        if not opcode:
+            return None
         opd = self._u16(opcode)
         n = opd >> 12
         handler = getattr(self, self.opcodes[n])
@@ -158,6 +205,7 @@ class Disassembler(object):
 
 
     def _vars(self, opd):
+        """ Separates the different bits from opcode """
         if isinstance(opd, bytes):
             opd = self._u16(opd)
         addr = opd & 0xfff
@@ -176,6 +224,7 @@ class Disassembler(object):
         }
 
     def _u16(self, opcode):
+        """ bytes to int """
         if len(opcode) == 1:
             return unpack('>B', opcode)[0]
         return unpack('>H', opcode)[0]
@@ -427,4 +476,5 @@ class Disassembler(object):
 
 
 CHIP8.register()
-log_info('registered CHIP-8 Architecture')
+Chip8View.register()
+log_info("WARNING: It's recommended to disable the 'CHIP-8' plugin after use.")
