@@ -1,6 +1,7 @@
 from binaryninja import Architecture
 from binaryninja import BinaryView
 from binaryninja.enums import SegmentFlag, SectionSemantics
+from .disasm import Disassembler
 
 
 class Chip8View(BinaryView):
