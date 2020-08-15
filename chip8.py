@@ -5,8 +5,9 @@ TODO: Need docstrings
 from binaryninja.log import log_info
 from binaryninja.architecture import Architecture
 from binaryninja.function import RegisterInfo, InstructionInfo, InstructionTextToken
-from binaryninja.enums import Endianness, InstructionTextTokenType
+from binaryninja.enums import Endianness, InstructionTextTokenType, BranchType
 from struct import unpack
+from enum import Enum
 
 
 
@@ -50,24 +51,39 @@ class CHIP8(Architecture):
         self.dis = Disassembler()
 
     def get_instruction_info(self, data, addr):
+        if len(data) > 2:
+            data = data[:2]
         result = InstructionInfo()
         result.length = 2
+        vars = self.dis._vars(data)
+        baddr = vars['addr']
+        binfo = self.dis.get_branch_info(data)
+        if binfo == BranchType.UnconditionalBranch or binfo == BranchType.CallDestination:
+            result.add_branch(binfo, baddr)
+        elif binfo == BranchType.FunctionReturn or binfo == BranchType.IndirectBranch:
+            result.add_branch(binfo)
+        elif binfo == BranchType.TrueBranch:
+            result.add_branch(BranchType.TrueBranch, addr + 4)
+            result.add_branch(BranchType.FalseBranch, addr + 2)
+        elif binfo == BranchType.FalseBranch:
+            result.add_branch(BranchType.TrueBranch, addr + 4)
+            result.add_branch(BranchType.FalseBranch, addr + 2)
         return result
     
     def get_instruction_text(self, data, addr):
+        if len(data) > 2:
+            data = data[:2]
         tokens = self.dis.disasm(data, addr)
         if not tokens:
             tokens = [InstructionTextToken(InstructionTextTokenType.InstructionToken, '_emit'),
             InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
-            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(data[0])),
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(data[0]), data[0]),
             InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(data[1]))]
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(data[1]), data[1])]
         return tokens, 2
 
     def get_instruction_low_level_il(self, data, addr, il):
         return None
-
-
 
 
 
@@ -117,15 +133,41 @@ class Disassembler(object):
         handler = getattr(self, self.opcodes[n])
         return handler(opd)
 
+    def get_branch_info(self, opcode):
+        vars = self._vars(opcode)
+        m, kk = vars['m'], vars['kk']
+        if m == 0x0:
+            if kk == 0xEE:
+                return BranchType.FunctionReturn
+            if kk != 0xE0:
+                return BranchType.UnconditionalBranch
+        if m == 0xE:
+            if kk == 0x9E:
+                return BranchType.TrueBranch
+            if kk == 0xA1:
+                return BranchType.FalseBranch
+        mnem = {
+            0x1: BranchType.UnconditionalBranch,
+            0x2: BranchType.CallDestination,
+            0x3: BranchType.TrueBranch,
+            0x4: BranchType.FalseBranch,
+            0x5: BranchType.TrueBranch,
+            0xB: BranchType.IndirectBranch,
+        }
+        return mnem.get(m, None)
+
+
     def _vars(self, opd):
         if isinstance(opd, bytes):
             opd = self._u16(opd)
         addr = opd & 0xfff
+        m = opd >> 12
         n = opd & 0xf
         x = (opd >> 8) & 0xf
         y = (opd >> 4) & 0xf
         kk = opd & 0xff
         return {
+            'm': m,
             'addr': addr,
             'n': n,
             'x': x,
@@ -146,19 +188,19 @@ class Disassembler(object):
         addr = opcode & 0xfff
         return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SYS'),
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
-        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr), addr)]
 
     def _jp(self, opcode):
         addr = opcode & 0xfff
         return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'JP'),
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
-        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr), addr)]
 
     def _call(self, opcode):
         addr = opcode & 0xfff
         return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'CALL'),
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
-        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr), addr)]
 
     def _se_kk(self, opcode):
         vars = self._vars(opcode)
@@ -167,7 +209,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk), kk)]
 
     def _sne_kk(self, opcode):
         vars = self._vars(opcode)
@@ -176,7 +218,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk), kk)]
 
     def _se(self, opcode):
         vars = self._vars(opcode)
@@ -194,7 +236,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk), kk)]
 
     def _add(self, opcode):
         vars = self._vars(opcode)
@@ -203,7 +245,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk), kk)]
 
     def _bitops(self, opcode):
         vars = self._vars(opcode)
@@ -249,7 +291,7 @@ class Disassembler(object):
             InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
             InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
             InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(1))]
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(1), 1)]
         elif n == 0x7:
             return [InstructionTextToken(InstructionTextTokenType.InstructionToken, 'SUBN'),
             InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
@@ -261,7 +303,7 @@ class Disassembler(object):
             InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
             InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
             InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(1))]
+            InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(1), 1)]
 
     def _sne(self, opcode):
         vars = self._vars(opcode)
@@ -278,7 +320,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, 'I'),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr), addr)]
     
     def _jp_v0(self, opcode):
         addr = opcode & 0xfff
@@ -286,7 +328,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, 'V0'),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr))]
+        InstructionTextToken(InstructionTextTokenType.PossibleAddressToken, hex(addr), addr)]
 
     def _rnd(self, opcode):
         vars = self._vars(opcode)
@@ -295,7 +337,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.TextToken, ' '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[x]),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk))]
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(kk), kk)]
 
     def _draw(self, opcode):
         vars = self._vars(opcode)
@@ -306,7 +348,7 @@ class Disassembler(object):
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
         InstructionTextToken(InstructionTextTokenType.RegisterToken, self.V[y]),
         InstructionTextToken(InstructionTextTokenType.OperandSeparatorToken, ', '),
-        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(n))]
+        InstructionTextToken(InstructionTextTokenType.IntegerToken, hex(n), n)]
     
     def _skip(self, opcode):
         vars = self._vars(opcode)
