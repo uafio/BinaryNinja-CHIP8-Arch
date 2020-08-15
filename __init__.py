@@ -1,7 +1,13 @@
-from binaryninja import *
+from binaryninja import log_info
+from .chip8 import Chip8
+from .view import Chip8View
 
-def do_nothing(bv,function):
-	show_message_box("Do Nothing", "Congratulations! You have successfully done nothing.\n\n" +
-					 "Pat yourself on the back.", MessageBoxButtonSet.OKButtonSet, MessageBoxIcon.ErrorIcon)
-
-PluginCommand.register_for_address("Useless Plugin", "Basically does nothing", do_nothing)
+Chip8.register()
+Chip8View.register()
+"""
+Because the CHIP-8 is an interpreted language, the ROM image contains no magic constant.
+If you have multiple 3rd party Architecture plugins and you want to load a non-CHIP-8 image,
+I assume the loader might misinterpret the data and use the wrong loader.
+Thus I recommend disabling the plugin after use.
+"""
+log_info("WARNING: It's recommended to disable the 'CHIP-8' plugin after use.")
