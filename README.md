@@ -1,50 +1,34 @@
-# Sample Plugin (v1.0 alpha)
-Author: **Vector 35 Inc**
-_This is a short description meant to fit on one line._
-## Description:
-This is a longer description meant for a sample plugin that demonstrates the metadata format for Binary Ninja plugins. Note that the [community-plugins repo]() contains a useful [utility](https://github.com/Vector35/community-plugins/blob/master/generate_plugininfo.py) to validate the plugin.json.
+# BinaryNinja CHIP-8 Architecture plugin
+Author: **uafio**
 
+Load and disassemble CHIP-8 ROMs.
+## Description:
+_CHIP-8 is an interpreted programming language, developed by Joseph Weisbecker. It was initially used on the COSMAC VIP and Telmac 1800 8-bit microcomputers in the mid-1970s. CHIP-8 programs are run on a CHIP-8 virtual machine._
+
+There are multiple implementations of the CHIP-8 Interpreter VM. This plugin works with what's known as [_CowGod's_](http://devernay.free.fr/hacks/chip8/C8TECH10.HTM) implementation.
+
+Decided not to implement the interpreter data segment at virtual address 0-0x200 because I think the user will get confused when inspecting the image under the hexview. Besides, all of the ROMs I've seen use their own sprites located in the ROM data.
 
 ## Installation Instructions
 
-### Windows
+### Manual Installation
+Clone the repo in BinaryNinja's plugin directory
 
-Install the following pip packages: ...
+cd {binary_ninja_dir}/plugins && git clone https://github.com/uafio/BinaryNinja-CHIP8-Arch.git chip8
 
-Install the following libraries: ...
+Start BinaryNinja. You should see the following message in the log console.
+![console](assets/log_console.png)
 
-### Darwin
-
-Install the following pip packages: ...
-
-Install the following brew packages: ...
-
-### Linux
-
-Install the following pip packages: ...
-
-Install the following apt packages: ...
-## Minimum Version
-
-This plugin requires the following minimum version of Binary Ninja:
-
- * 1200
-"
-
+### Plugin Manager
+TODO
 
 ## Required Dependencies
 
-The following dependencies are required for this plugin:
-
- * pip - array, of, pip, dependencies
- * installers - https://bogus-domain/this-package.exe
- * other - The sample plugin requires [this random package](https://bogus-domain/this-package/) be installed.
- * apt - apt, packages
-
+Package is self-contained, it requires no additional packages.
 
 ## License
 
 This plugin is released under a MIT license.
-## Metadata Version
 
-2
+## Preview
+![chip8gif](assets/chip8arch.gif)
