@@ -20,7 +20,7 @@ Start BinaryNinja. You should see the following message in the log console.
 ![console](assets/log_console.png)
 
 ### Plugin Manager
-TODO
+Install using the [Plugin Manager](https://docs.binary.ninja/guide/plugins.html#plugin-manager)
 
 ## Required Dependencies
 
