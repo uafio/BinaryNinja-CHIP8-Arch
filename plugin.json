@@ -15,7 +15,7 @@
 		"Linux" : "",
 		"Windows" : ""
 	},
-	"version": "1.0.0",
+	"version": "1.0",
 	"author": "uafio",
 	"minimumbinaryninjaversion": 1200
 }
